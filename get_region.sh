@@ -173,7 +173,7 @@ if [[ $selectedRegion == "none" ]]; then
   else
     echo -e "A list of servers and connection details, ordered by latency can be
 found in at : ${green}/opt/piavpn-manual/latencyList${nc}
-"
+  "
   fi
 else
   selectedOrLowestLatency="selected"
@@ -231,16 +231,22 @@ else
   echo
 fi
 
+# Set default for ROUTE_LAN_VIA_VPN if not specified
+: "${ROUTE_LAN_VIA_VPN=true}"
+
 # Connect with WireGuard and clear authentication token file and latencyList
 if [[ $VPN_PROTOCOL == "wireguard" ]]; then
   echo "The ./get_region.sh script got started with"
   echo -e "${green}VPN_PROTOCOL=wireguard${nc}, so we will automatically connect to WireGuard,"
   echo "by running this command:"
-  echo -e "$ ${green}PIA_TOKEN=$PIA_TOKEN \\"
-  echo "WG_SERVER_IP=$bestServer_WG_IP WG_HOSTNAME=$bestServer_WG_hostname \\"
+  echo -e "$ ${green}PIA_TOKEN=$PIA_TOKEN \"
+  echo "ROUTE_LAN_VIA_VPN=$ROUTE_LAN_VIA_VPN \"
+  echo "WG_SERVER_IP=$bestServer_WG_IP WG_HOSTNAME=$bestServer_WG_hostname \"
   echo -e "PIA_PF=$PIA_PF ./connect_to_wireguard_with_token.sh${nc}"
   echo
-  PIA_PF=$PIA_PF PIA_TOKEN=$PIA_TOKEN WG_SERVER_IP=$bestServer_WG_IP \
+  PIA_PF=$PIA_PF PIA_TOKEN=$PIA_TOKEN \
+    ROUTE_LAN_VIA_VPN=$ROUTE_LAN_VIA_VPN \
+    WG_SERVER_IP=$bestServer_WG_IP \
     WG_HOSTNAME=$bestServer_WG_hostname ./connect_to_wireguard_with_token.sh
   rm -f /opt/piavpn-manual/latencyList
   exit 0
@@ -257,13 +263,15 @@ if [[ $VPN_PROTOCOL == openvpn* ]]; then
   echo "The ./get_region.sh script got started with"
   echo -e "${green}VPN_PROTOCOL=$VPN_PROTOCOL${nc}, so we will automatically"
   echo "connect to OpenVPN, by running this command:"
-  echo -e "$ ${green}PIA_PF=$PIA_PF PIA_TOKEN=$PIA_TOKEN \\"
-  echo "  OVPN_SERVER_IP=$serverIP \\"
-  echo "  OVPN_HOSTNAME=$serverHostname \\"
-  echo "  CONNECTION_SETTINGS=$VPN_PROTOCOL \\"
+  echo -e "$ ${green}PIA_PF=$PIA_PF PIA_TOKEN=$PIA_TOKEN \"
+  echo "ROUTE_LAN_VIA_VPN=$ROUTE_LAN_VIA_VPN \"
+  echo "  OVPN_SERVER_IP=$serverIP \"
+  echo "  OVPN_HOSTNAME=$serverHostname \"
+  echo "  CONNECTION_SETTINGS=$VPN_PROTOCOL \"
   echo -e "  ./connect_to_openvpn_with_token.sh${nc}"
   echo
   PIA_PF=$PIA_PF PIA_TOKEN=$PIA_TOKEN \
+    ROUTE_LAN_VIA_VPN=$ROUTE_LAN_VIA_VPN \
     OVPN_SERVER_IP=$serverIP \
     OVPN_HOSTNAME=$serverHostname \
     CONNECTION_SETTINGS=$VPN_PROTOCOL \

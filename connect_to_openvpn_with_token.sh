@@ -98,6 +98,9 @@ then
   echo -e "sysctl -w net.ipv6.conf.default.disable_ipv6=1${nc}"
 fi
 
+# Set default for ROUTE_LAN_VIA_VPN if not specified
+: "${ROUTE_LAN_VIA_VPN=true}"
+
 # Check if the mandatory environment variables are set.
 if [[ -z $OVPN_SERVER_IP ||
       -z $OVPN_HOSTNAME ||
@@ -117,6 +120,7 @@ if [[ -z $OVPN_SERVER_IP ||
   echo "You can also specify optional env vars:"
   echo "PIA_PF                - enable port forwarding"
   echo "PAYLOAD_AND_SIGNATURE - In case you already have a port."
+  echo "ROUTE_LAN_VIA_VPN     - route LAN traffic via VPN (true/false, default: true)"
   echo
   echo "An easy solution is to just run get_region_and_token.sh"
   echo "as it will guide you through getting the best server and"
@@ -173,20 +177,75 @@ fi
 cat "$prefix_filepath" > /opt/piavpn-manual/pia.ovpn || exit 1
 echo "remote $OVPN_SERVER_IP $port $protocol" >> /opt/piavpn-manual/pia.ovpn
 
-# Copy the up/down scripts to /opt/piavpn-manual/
-# based upon use of PIA DNS
-if [[ $PIA_DNS != "true" ]]; then
-  cp openvpn_config/openvpn_up.sh /opt/piavpn-manual/
-  cp openvpn_config/openvpn_down.sh /opt/piavpn-manual/
-  echo -e "${red}This configuration will not use PIA DNS.${nc}"
-  echo "If you want to also enable PIA DNS, please start the script"
-  echo "with the env var PIA_DNS=true. Example:"
-  echo $ OVPN_SERVER_IP=\""$OVPN_SERVER_IP"\" OVPN_HOSTNAME=\""$OVPN_HOSTNAME"\" \
-    PIA_TOKEN=\""$PIA_TOKEN"\" CONNECTION_SETTINGS=\""$CONNECTION_SETTINGS"\" \
-    PIA_PF=true PIA_DNS=true ./connect_to_openvpn_with_token.sh
+# Create custom routing script if LAN traffic should be excluded
+if [[ $ROUTE_LAN_VIA_VPN == "false" ]]; then
+  echo "# Custom routing script to exclude LAN traffic from VPN
+#!/usr/bin/env bash
+
+# Write gateway IP for reference
+echo \"$route_vpn_gateway\" > /opt/piavpn-manual/route_info
+
+# Get the current default gateway (non-VPN)
+default_gateway=\$(ip route show 0.0.0.0/0 | grep -v tun06 | awk '{print \$3}' | head -1)
+
+# Common LAN subnets to exclude from VPN routing
+lan_subnets=("192.168.0.0/16" "172.16.0.0/12" "10.0.0.0/8" "169.254.0.0/16")
+
+# Add routes for LAN subnets to use the default gateway
+for subnet in \"\${lan_subnets[@]}\"; do
+  ip route add \"$subnet\" via \"$default_gateway\" dev \"\$dev\" 2>/dev/null || true
+done
+
+# Add route for VPN gateway to use the default gateway
+ip route add \"$route_vpn_gateway\" via \"$default_gateway\" 2>/dev/null || true
+
+# Add route for VPN network to use the VPN interface
+ip route add \"$route_network_1\" \"$route_netmask_1\" via \"$route_vpn_gateway\" 2>/dev/null || true
+if [[ -n \"$route_network_2\" ]]; then
+  ip route add \"$route_network_2\" \"$route_netmask_2\" via \"$route_vpn_gateway\" 2>/dev/null || true
+fi" > /opt/piavpn-manual/openvpn_up_custom.sh
+  chmod +x /opt/piavpn-manual/openvpn_up_custom.sh
+  
+  # Create custom down script
+  echo "# Custom routing cleanup script
+#!/usr/bin/env bash
+
+# Remove LAN subnet routes
+lan_subnets=("192.168.0.0/16" "172.16.0.0/12" "10.0.0.0/8" "169.254.0.0/16")
+for subnet in \"\${lan_subnets[@]}\"; do
+  ip route del \"$subnet\" 2>/dev/null || true
+done
+
+# Remove VPN gateway route
+ip route del \"$route_vpn_gateway\" 2>/dev/null || true
+
+# Remove VPN network routes
+ip route del \"$route_network_1\" \"$route_netmask_1\" 2>/dev/null || true
+if [[ -n \"$route_network_2\" ]]; then
+  ip route del \"$route_network_2\" \"$route_netmask_2\" 2>/dev/null || true
+fi" > /opt/piavpn-manual/openvpn_down_custom.sh
+  chmod +x /opt/piavpn-manual/openvpn_down_custom.sh
+  
+  # Use custom scripts
+  echo "up /opt/piavpn-manual/openvpn_up_custom.sh" >> /opt/piavpn-manual/pia.ovpn
+  echo "down /opt/piavpn-manual/openvpn_down_custom.sh" >> /opt/piavpn-manual/pia.ovpn
+  echo -e "${green}LAN traffic will be routed outside the VPN.${nc}"
 else
-  cp openvpn_config/openvpn_up_dnsoverwrite.sh /opt/piavpn-manual/openvpn_up.sh
-  cp openvpn_config/openvpn_down_dnsoverwrite.sh /opt/piavpn-manual/openvpn_down.sh
+  # Copy the up/down scripts to /opt/piavpn-manual/
+  # based upon use of PIA DNS
+  if [[ $PIA_DNS != "true" ]]; then
+    cp openvpn_config/openvpn_up.sh /opt/piavpn-manual/
+    cp openvpn_config/openvpn_down.sh /opt/piavpn-manual/
+    echo -e "${red}This configuration will not use PIA DNS.${nc}"
+    echo "If you want to also enable PIA DNS, please start the script"
+    echo "with the env var PIA_DNS=true. Example:"
+    echo $ OVPN_SERVER_IP=\""$OVPN_SERVER_IP"\" OVPN_HOSTNAME=\""$OVPN_HOSTNAME"\" \
+      PIA_TOKEN=\""$PIA_TOKEN"\" CONNECTION_SETTINGS=\""$CONNECTION_SETTINGS"\" \
+      PIA_PF=true PIA_DNS=true ./connect_to_openvpn_with_token.sh
+  else
+    cp openvpn_config/openvpn_up_dnsoverwrite.sh /opt/piavpn-manual/openvpn_up.sh
+    cp openvpn_config/openvpn_down_dnsoverwrite.sh /opt/piavpn-manual/openvpn_down.sh
+  fi
 fi
 
 # Start the OpenVPN interface.

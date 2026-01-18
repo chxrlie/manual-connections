@@ -210,6 +210,21 @@ export PIA_PF
 echo -e "${green}PIA_PF=$PIA_PF${nc}"
 echo
 
+# Check for in-line definition of ROUTE_LAN_VIA_VPN and prompt for input
+if [[ -z $ROUTE_LAN_VIA_VPN ]]; then
+  echo "By default, all traffic including LAN traffic is routed through the VPN."
+  echo -n "Do you want to exclude LAN traffic from VPN routing? (y/N): "
+  read -r routeLanInput
+  echo
+  ROUTE_LAN_VIA_VPN="true"
+  if echo "${routeLanInput:0:1}" | grep -iq y; then
+    ROUTE_LAN_VIA_VPN="false"
+  fi
+fi
+export ROUTE_LAN_VIA_VPN
+echo -e "${green}ROUTE_LAN_VIA_VPN=$ROUTE_LAN_VIA_VPN${nc}"
+echo
+
 # Check for in-line definition of DISABLE_IPV6 and prompt for input
 if [[ -z $DISABLE_IPV6 ]]; then
   echo "Having active IPv6 connections might compromise security by allowing"
@@ -484,6 +499,7 @@ elif [[ $VPN_PROTOCOL == wireguard ]]; then
   echo -e "./connect_to_wireguard_with_token.sh${nc}"
   echo
   PIA_PF=$PIA_PF PIA_TOKEN=$PIA_TOKEN DIP_TOKEN=$DIP_TOKEN \
+    ROUTE_LAN_VIA_VPN=$ROUTE_LAN_VIA_VPN \
     WG_SERVER_IP=$dipAddress WG_HOSTNAME=$dipHostname \
     ./connect_to_wireguard_with_token.sh
   rm -f /opt/piavpn-manual/latencyList
@@ -500,6 +516,7 @@ elif [[ $VPN_PROTOCOL == openvpn* ]]; then
   echo -e "./connect_to_openvpn_with_token.sh${nc}"
   echo
   PIA_PF=$PIA_PF PIA_TOKEN=$PIA_TOKEN \
+    ROUTE_LAN_VIA_VPN=$ROUTE_LAN_VIA_VPN \
     DIP_TOKEN=$DIP_TOKEN OVPN_SERVER_IP=$dipAddress \
     OVPN_HOSTNAME=$dipHostname \
     CONNECTION_SETTINGS=$VPN_PROTOCOL \

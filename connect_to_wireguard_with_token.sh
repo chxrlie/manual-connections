@@ -67,6 +67,9 @@ then
   echo -e "sysctl -w net.ipv6.conf.default.disable_ipv6=1${nc}"
 fi
 
+# Set default for ROUTE_LAN_VIA_VPN if not specified
+: "${ROUTE_LAN_VIA_VPN=true}"
+
 # Check if the mandatory environment variables are set.
 if [[ -z $WG_SERVER_IP ||
       -z $WG_HOSTNAME ||
@@ -79,6 +82,7 @@ if [[ -z $WG_SERVER_IP ||
   echo "You can also specify optional env vars:"
   echo "PIA_PF                - enable port forwarding"
   echo "PAYLOAD_AND_SIGNATURE - In case you already have a port."
+  echo "ROUTE_LAN_VIA_VPN     - route LAN traffic via VPN (true/false, default: true)"
   echo
   echo "An easy solution is to just run get_region_and_token.sh"
   echo "as it will guide you through getting the best server and"
@@ -151,15 +155,40 @@ if [[ $PIA_DNS == "true" ]]; then
 fi
 echo -n "Trying to write ${PIA_CONF_PATH}..."
 mkdir -p "$(dirname "$PIA_CONF_PATH")"
+
+# Determine AllowedIPs based on ROUTE_LAN_VIA_VPN setting
+if [[ $ROUTE_LAN_VIA_VPN == "false" ]]; then
+  # Exclude common LAN subnets from VPN routing
+  allowed_ips="0.0.0.0/0"
+  # We'll use PostUp and PostDown scripts to handle the routing
+  post_up="PostUp = ip route add 192.168.0.0/16 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1); "
+  post_up=\$post_up"ip route add 172.16.0.0/12 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1); "
+  post_up=\$post_up"ip route add 10.0.0.0/8 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1); "
+  post_up=\$post_up"ip route add 169.254.0.0/16 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1)"
+  
+  post_down="PostDown = ip route del 192.168.0.0/16 2>/dev/null || true; "
+  post_down=\$post_down"ip route del 172.16.0.0/12 2>/dev/null || true; "
+  post_down=\$post_down"ip route del 10.0.0.0/8 2>/dev/null || true; "
+  post_down=\$post_down"ip route del 169.254.0.0/16 2>/dev/null || true"
+  echo -e "${green}LAN traffic will be routed outside the VPN.${nc}"
+else
+  # Route all traffic through VPN (default behavior)
+  allowed_ips="0.0.0.0/0"
+  post_up=""
+  post_down=""
+fi
+
 echo "
 [Interface]
 Address = $(echo "$wireguard_json" | jq -r '.peer_ip')
 PrivateKey = $privKey
 $dnsSettingForVPN
+$post_up
+$post_down
 [Peer]
 PersistentKeepalive = 25
 PublicKey = $(echo "$wireguard_json" | jq -r '.server_key')
-AllowedIPs = 0.0.0.0/0
+AllowedIPs = $allowed_ips
 Endpoint = ${WG_SERVER_IP}:$(echo "$wireguard_json" | jq -r '.server_port')
 " > ${PIA_CONF_PATH} || exit 1
 echo -e "${green}OK!${nc}"
