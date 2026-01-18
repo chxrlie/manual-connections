@@ -161,15 +161,9 @@ if [[ $ROUTE_LAN_VIA_VPN == "false" ]]; then
   # Exclude common LAN subnets from VPN routing
   allowed_ips="0.0.0.0/0"
   # We'll use PostUp and PostDown scripts to handle the routing
-  post_up="PostUp = ip route add 192.168.0.0/16 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1); "
-  post_up=\$post_up"ip route add 172.16.0.0/12 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1); "
-  post_up=\$post_up"ip route add 10.0.0.0/8 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1); "
-  post_up=\$post_up"ip route add 169.254.0.0/16 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1)"
+  post_up="PostUp = ip route add 192.168.0.0/16 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1); ip route add 172.16.0.0/12 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1); ip route add 10.0.0.0/8 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1); ip route add 169.254.0.0/16 via \$(ip route show 0.0.0.0/0 | grep -v wg0 | awk '{print \$3}' | head -1)"
   
-  post_down="PostDown = ip route del 192.168.0.0/16 2>/dev/null || true; "
-  post_down=\$post_down"ip route del 172.16.0.0/12 2>/dev/null || true; "
-  post_down=\$post_down"ip route del 10.0.0.0/8 2>/dev/null || true; "
-  post_down=\$post_down"ip route del 169.254.0.0/16 2>/dev/null || true"
+  post_down="PostDown = ip route del 192.168.0.0/16 2>/dev/null || true; ip route del 172.16.0.0/12 2>/dev/null || true; ip route del 10.0.0.0/8 2>/dev/null || true; ip route del 169.254.0.0/16 2>/dev/null || true"
   echo -e "${green}LAN traffic will be routed outside the VPN.${nc}"
 else
   # Route all traffic through VPN (default behavior)
